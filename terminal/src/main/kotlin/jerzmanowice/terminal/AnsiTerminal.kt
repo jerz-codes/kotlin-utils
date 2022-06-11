@@ -12,6 +12,10 @@ internal class AnsiTerminal(
     private val lines: MutableList<MutableList<Symbol>> = mutableListOf(mutableListOf())
     private var cursorPosition: Point = Point(0, 0)
 
+    init {
+        notifyListerners()
+    }
+
     fun onChars(text: String) {
         for (c in text) {
             if (c == NEWLINE) {
@@ -42,6 +46,8 @@ internal class AnsiTerminal(
             }
         }
 
-        onLinesChanged(lines.asSequence(), cursorPosition)
+        notifyListerners()
     }
+
+    private fun notifyListerners() = onLinesChanged(lines.asSequence(), cursorPosition)
 }
