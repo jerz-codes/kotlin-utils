@@ -15,7 +15,7 @@ internal class AnsiTerminal(
     fun onChars(text: String) {
         for (c in text) {
             if (c == NEWLINE) {
-                if (cursorPosition.y == linesCount) {
+                if (cursorPosition.y == linesCount - 1) {
                     cursorPosition = cursorPosition.copy(x = 0)
                     lines.removeAt(0)
                     lines.add(mutableListOf())
