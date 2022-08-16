@@ -16,6 +16,7 @@ internal class AnsiTerminal(
         notifyListerners()
     }
 
+    @Synchronized
     fun onChars(text: String) {
         for (c in text) {
             if (c == NEWLINE) {
@@ -49,6 +50,7 @@ internal class AnsiTerminal(
         notifyListerners()
     }
 
+    @Synchronized
     fun onBackspace() {
         if (cursorPosition.x == 0) return
         lines[cursorPosition.y].removeLast()
