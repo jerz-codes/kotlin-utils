@@ -71,21 +71,28 @@ fun terminal(
 
         val keyListener = object : KeyListener {
             val readlnSink = readlnPipe.sink.buffer()
-
-            private fun handleChar(c: Char) {
-                val utfChar = "$c"
-
-                terminal.onChars(utfChar)
-
-                readlnSink.writeUtf8(utfChar)
-                readlnSink.flush()
-            }
+            var input = mutableListOf<String>()
 
             override fun keyTyped(e: KeyEvent) {
                 when (e.extendedKeyCode) {
-                    0x0a -> handleChar('\n')
-                    0x08, 0x7f -> Unit // backspace and delete respectively. We do not support these for now.
-                    else -> handleChar(e.keyChar)
+                    0x0a -> {
+                        input.forEach(readlnSink::writeUtf8)
+                        readlnSink.writeUtf8("\n")
+                        readlnSink.flush()
+                        input.clear()
+
+                        terminal.onChars("\n")
+                    }
+                    0x08 -> {
+                        input.removeLastOrNull()
+                        terminal.onBackspace()
+                    }
+                    0x7f -> Unit // delete, we do not support it at the moment
+                    else -> {
+                        val utfString = "${e.keyChar}"
+                        input.add(utfString)
+                        terminal.onChars(utfString)
+                    }
                 }
             }
 

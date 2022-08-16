@@ -49,5 +49,12 @@ internal class AnsiTerminal(
         notifyListerners()
     }
 
+    fun onBackspace() {
+        if (cursorPosition.x == 0) return
+        lines[cursorPosition.y].removeLast()
+        cursorPosition = cursorPosition.copy(x = cursorPosition.x - 1)
+        notifyListerners()
+    }
+
     private fun notifyListerners() = onLinesChanged(lines.asSequence(), cursorPosition)
 }
