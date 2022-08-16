@@ -84,8 +84,9 @@ fun terminal(
                         terminal.onChars("\n")
                     }
                     0x08 -> {
-                        input.removeLastOrNull()
-                        terminal.onBackspace()
+                        if (input.removeLastOrNull() != null) {
+                            terminal.onBackspace()
+                        }
                     }
                     0x7f -> Unit // delete, we do not support it at the moment
                     else -> {
