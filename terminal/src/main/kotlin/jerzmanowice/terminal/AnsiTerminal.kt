@@ -1,10 +1,11 @@
 package jerzmanowice.terminal
 
 import java.awt.Color
+import kotlin.streams.asSequence
 
 internal class AnsiTerminal(
     val linesCount: Int,
-    val onLinesChanged: (lines: Sequence<List<Symbol>>, cursorPosition: Point?) -> Unit = { _, _ -> }
+    val onFeedChanged: (feed: TerminalFeed) -> Unit = { }
 ) {
     private var background: Color? = null
     private var foreground: Color = Color.WHITE
@@ -18,45 +19,56 @@ internal class AnsiTerminal(
 
     @Synchronized
     fun onChars(text: String) {
-        for (c in text) {
-            if (c == NEWLINE) {
-                if (cursorPosition.y == linesCount - 1) {
-                    cursorPosition = cursorPosition.copy(x = 0)
-                    lines.removeAt(0)
-                    lines.add(mutableListOf())
-                } else {
-                    cursorPosition = cursorPosition.copy(x = 0, y = cursorPosition.y + 1)
-                    if (cursorPosition.y == lines.size) {
-                        lines.add(mutableListOf())
-                    }
-                }
-            } else {
-                val symbol = Symbol(c, foreground, background)
-                with(lines[cursorPosition.y]) {
-                    if (cursorPosition.x < size) {
-                        set(cursorPosition.x, symbol)
-                    } else {
-                        repeat(cursorPosition.x - size) {
-                            add(Symbol(' ', foreground, background))
-                        }
-                        add(symbol)
-                    }
-                }
+        text.codePoints()
+            .asSequence()
+            .forEach { codePoint ->
+                val glyph = String(Character.toChars(codePoint))
 
-                cursorPosition = cursorPosition.copy(x = cursorPosition.x + 1)
+                if (glyph == NEWLINE) {
+                    if (cursorPosition.y == linesCount - 1) {
+                        cursorPosition = cursorPosition.copy(x = 0)
+                        lines.removeAt(0)
+                        lines.add(mutableListOf())
+                    } else {
+                        cursorPosition = cursorPosition.copy(x = 0, y = cursorPosition.y + 1)
+                        if (cursorPosition.y == lines.size) {
+                            lines.add(mutableListOf())
+                        }
+                    }
+                } else {
+                    lines[cursorPosition.y].safeSet(cursorPosition.x, Symbol(glyph, foreground, background))
+                    cursorPosition = cursorPosition.copy(x = cursorPosition.x + 1)
+                }
             }
-        }
 
         notifyListerners()
+    }
+
+    private fun MutableList<Symbol>.safeSet(index: Int, symbol: Symbol) {
+        if (index < size) {
+            set(index, symbol)
+        } else {
+            repeat(index - size) {
+                add(Symbol(" ", foreground, null))
+            }
+            add(symbol)
+        }
     }
 
     @Synchronized
     fun onBackspace() {
         if (cursorPosition.x == 0) return
+
         lines[cursorPosition.y].removeLast()
         cursorPosition = cursorPosition.copy(x = cursorPosition.x - 1)
+
         notifyListerners()
     }
 
-    private fun notifyListerners() = onLinesChanged(lines.asSequence(), cursorPosition)
+    private fun notifyListerners() = onFeedChanged(TerminalFeed(lines, cursorPosition))
 }
+
+internal data class TerminalFeed(
+    val lines: List<List<Symbol>> = emptyList(),
+    val cursorPosition: Point? = null
+)

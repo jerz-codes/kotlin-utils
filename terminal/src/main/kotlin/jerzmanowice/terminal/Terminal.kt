@@ -10,6 +10,7 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
+import java.awt.font.GlyphVector
 import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.WindowConstants.EXIT_ON_CLOSE
@@ -28,7 +29,7 @@ fun terminal(
     val originalStdIn = System.`in`
 
     // On some JDKs the font antialiasing is broken without this
-    System.setProperty("awt.useSystemAAFontSettings","on")
+    System.setProperty("awt.useSystemAAFontSettings", "on")
     System.setProperty("swing.aatext", "true")
 
     try {
@@ -47,24 +48,8 @@ fun terminal(
                 requestFocusInWindow()
             }
 
-        val terminal = AnsiTerminal(linesCount = heightInTiles) { lines, cursorPosition ->
-            terminalPane.screen = buildMap {
-                lines.forEachIndexed { y, line ->
-                    line.asSequence()
-                        .take(terminalPane.widthInTiles)
-                        .forEachIndexed { x, symbol ->
-                            put(Point(x, y), symbol)
-                        }
-                }
-
-                if (cursorPosition != null) {
-                    val cursorSymbol = get(cursorPosition)
-                        ?.copy(background = Color.LIGHT_GRAY)
-                        ?: Symbol(char = ' ', foreground = Color.WHITE, background = Color.LIGHT_GRAY)
-
-                    put(cursorPosition, cursorSymbol)
-                }
-            }
+        val terminal = AnsiTerminal(linesCount = heightInTiles) { feed ->
+            terminalPane.screen = feed
         }
 
         val readlnPipe = Pipe(1024)
@@ -118,7 +103,7 @@ fun terminal(
 }
 
 private class TerminalPane(
-    val widthInTiles: Int,
+    widthInTiles: Int,
     val heightInTiles: Int,
     fontSize: Int,
 ) : JPanel() {
@@ -126,6 +111,11 @@ private class TerminalPane(
     val standardTileFont: Font = Font
         .createFont(Font.TRUETYPE_FONT, javaClass.getResourceAsStream("/fonts/UbuntuMono-Bold.ttf"))
         .deriveFont(Font.BOLD, fontSize.toFloat())
+
+    // 0.8f is an experimentally chosen scaling factor which makes the emojis rougly twice as wide as the regular text
+    val emojiTileFont: Font = Font
+        .createFont(Font.TRUETYPE_FONT, javaClass.getResourceAsStream("/fonts/NotoEmoji-Bold.ttf"))
+        .deriveFont(Font.BOLD, fontSize.toFloat() * 0.8f)
 
     val tileWidth: Int
     val tileHeight: Int
@@ -147,41 +137,77 @@ private class TerminalPane(
         )
     }
 
+    val glyphsCache = mutableMapOf<String, Pair<GlyphVector, Boolean>>()
+
+    private fun Font.canRenderText(text: String) = canDisplayUpTo(text) == -1
+
     override fun paintComponent(g: Graphics) {
         (g as Graphics2D).setRenderingHint(
             RenderingHints.KEY_TEXT_ANTIALIASING,
             RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB
         )
-        g.font = standardTileFont
 
         g.color = Color.BLACK
         g.fillRect(0, 0, width, height)
 
         for (y in 0 until heightInTiles) {
-            for (x in 0 until widthInTiles) {
-                val symbol = screen[Point(x, y)] ?: continue
+            val line = screen.lines.getOrNull(y) ?: continue
+            var x = padding
 
-                if (symbol.background != null) {
-                    g.color = symbol.background
+            line.forEachIndexed { i, symbol ->
+                val (glyph, isEmoji) = glyphsCache.getOrPut(symbol.glyph) {
+                    val isEmoji = !standardTileFont.canRenderText(symbol.glyph)
+
+                    val font = if (isEmoji) emojiTileFont else standardTileFont
+
+                    val glyph = font.createGlyphVector(
+                        g.fontRenderContext,
+                        symbol.glyph
+                    )
+
+                    glyph to isEmoji
+                }
+
+                val background = when {
+                    screen.cursorPosition?.y == y && screen.cursorPosition?.x == i -> Color.LIGHT_GRAY
+                    else -> symbol.background
+                }
+
+                val symbolWidth = if (isEmoji) 2 * tileWidth else tileWidth
+
+                if (background != null) {
+                    g.color = background
                     g.fillRect(
-                        x * tileWidth + padding,
+                        x,
                         y * tileHeight + padding,
-                        tileWidth,
+                        symbolWidth,
                         tileHeight
                     )
                 }
 
                 g.color = symbol.foreground
-                g.drawString(
-                    "${symbol.char}",
-                    x * tileWidth + padding,
-                    y * tileHeight + baselineOffset + padding
+                g.drawGlyphVector(
+                    glyph,
+                    x.toFloat(),
+                    (y * tileHeight + baselineOffset + padding).toFloat()
+                )
+
+                x += symbolWidth
+            }
+
+            if (screen.cursorPosition != null && screen.cursorPosition?.y == y && screen.cursorPosition?.x == line.size) {
+                g.color = Color.LIGHT_GRAY
+                g.fillRect(
+                    x,
+                    y * tileHeight + padding,
+                    tileWidth,
+                    tileHeight
                 )
             }
         }
     }
 
-    var screen: Map<Point, Symbol> = emptyMap()
+    var screen: TerminalFeed = TerminalFeed()
         set(value) {
             field = value
             repaint()

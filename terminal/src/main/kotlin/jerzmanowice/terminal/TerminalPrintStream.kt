@@ -39,5 +39,5 @@ internal class TerminalPrintStream(private val onChars: (String) -> Unit) : Prin
     override fun print(obj: Any?) = print(obj.toString())
 
     override fun print(s: String?) = onChars(s.toString())
-    private fun newLine(): Unit = onChars(NEWLINE.toString())
+    private fun newLine(): Unit = onChars(NEWLINE)
 }
