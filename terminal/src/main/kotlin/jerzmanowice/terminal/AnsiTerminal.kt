@@ -91,6 +91,18 @@ internal class AnsiTerminal(
     private fun applyAnsiSequence(ansiSequence: String) {
         when(ansiSequence.last()) {
             'm' -> applySelectGraphicRendition(ansiSequence.dropLast(1))
+            'H' -> {
+                val (row, col) = ansiSequence.dropLast(1).split(';')
+                    .also { check(it.size == 2) { "Provide both coordinates for Cursor Position ANSI sequence" } }
+                    .map { it.toInt() }
+
+                // position is 1-based
+                cursorPosition = Point(col - 1, row - 1)
+                while (cursorPosition.y >= lines.size) {
+                    lines.add(mutableListOf())
+                }
+                lines[cursorPosition.y].safeSet(cursorPosition.x, Symbol(" ", foreground))
+            }
             'J' -> when (ansiSequence.dropLast(1)) {
                 "", "0" -> {
                     lines.forEachIndexed { index, symbols ->
