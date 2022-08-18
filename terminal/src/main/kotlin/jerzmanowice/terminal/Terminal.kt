@@ -59,25 +59,27 @@ fun terminal(
             var input = mutableListOf<String>()
 
             override fun keyTyped(e: KeyEvent) {
-                when (e.extendedKeyCode) {
-                    0x0a -> {
-                        input.forEach(readlnSink::writeUtf8)
-                        readlnSink.writeUtf8("\n")
-                        readlnSink.flush()
-                        input.clear()
+                terminal.lockForRead {
+                    when (e.extendedKeyCode) {
+                        0x0a -> {
+                            input.forEach(readlnSink::writeUtf8)
+                            readlnSink.writeUtf8("\n")
+                            readlnSink.flush()
+                            input.clear()
 
-                        terminal.onChars("\n")
-                    }
-                    0x08 -> {
-                        if (input.removeLastOrNull() != null) {
-                            terminal.onBackspace()
+                            terminal.onChars("\n")
                         }
-                    }
-                    0x7f -> Unit // delete, we do not support it at the moment
-                    else -> {
-                        val utfString = "${e.keyChar}"
-                        input.add(utfString)
-                        terminal.onChars(utfString)
+                        0x08 -> {
+                            if (input.removeLastOrNull() != null) {
+                                terminal.onBackspace()
+                            }
+                        }
+                        0x7f -> Unit // delete, we do not support it at the moment
+                        else -> {
+                            val utfString = "${e.keyChar}"
+                            input.add(utfString)
+                            terminal.onChars(utfString)
+                        }
                     }
                 }
             }

@@ -7,14 +7,42 @@ internal class AnsiTerminal(
     val linesCount: Int,
     val onFeedChanged: (feed: TerminalFeed) -> Unit = { }
 ) {
+    private var partialAnsiSequence: StringBuilder? = null
+
     private var background: Color? = null
     private var foreground: Color = Color.WHITE
 
     private val lines: MutableList<MutableList<Symbol>> = mutableListOf(mutableListOf())
+    private var showCursor: Boolean = true
     private var cursorPosition: Point = Point(0, 0)
+
+    private val standardColors = mapOf(
+        30 to Color(0, 0, 0),
+        31 to Color(170, 0, 0),
+        32 to Color(0, 170, 0),
+        33 to Color(170, 85, 0),
+        34 to Color(0, 0, 170),
+        35 to Color(170, 0, 170),
+        36 to Color(0, 170, 170),
+        37 to Color(170, 170, 170),
+        // bright pallette
+        90 to Color(85, 85, 85),
+        91 to Color(255, 85, 85),
+        92 to Color(85, 255, 85),
+        93 to Color(255, 255, 85),
+        94 to Color(85, 85, 255),
+        95 to Color(255, 85, 255),
+        96 to Color(85, 255, 255),
+        97 to Color(255, 255, 255),
+    )
 
     init {
         notifyListerners()
+    }
+
+    fun lockForRead(block: () -> Unit) = synchronized(this) {
+        // prevent readln messing up the ANSI sequence
+        if (partialAnsiSequence == null) block()
     }
 
     @Synchronized
@@ -24,7 +52,23 @@ internal class AnsiTerminal(
             .forEach { codePoint ->
                 val glyph = String(Character.toChars(codePoint))
 
-                if (glyph == NEWLINE) {
+                val ansiSequence = partialAnsiSequence
+                if (ansiSequence != null) {
+                    val char = glyph.single()
+
+                    if (ansiSequence.isEmpty()) {
+                        check(char == '[') { "Unsupported ANSI control code" }
+                        ansiSequence.append(char)
+                    } else {
+                        ansiSequence.append(char)
+                        if (char in '\u0040'..'\u007e') {
+                            applyAnsiSequence(ansiSequence.toString())
+                            partialAnsiSequence = null
+                        }
+                    }
+                } else if (glyph == ESCAPE) {
+                    partialAnsiSequence = StringBuilder()
+                } else if (glyph == NEWLINE) {
                     if (cursorPosition.y == linesCount - 1) {
                         cursorPosition = cursorPosition.copy(x = 0)
                         lines.removeAt(0)
@@ -42,6 +86,64 @@ internal class AnsiTerminal(
             }
 
         notifyListerners()
+    }
+
+    private fun applyAnsiSequence(ansiSequence: String) {
+        when(ansiSequence.last()) {
+            'm' -> applySelectGraphicRendition(ansiSequence.drop(1).dropLast(1))
+            else -> when (ansiSequence) {
+                "?25h" -> showCursor = true
+                "?25l" -> showCursor = false
+                else -> throw IllegalStateException("Unsupported ANSI sequence: $ansiSequence")
+            }
+        }
+    }
+
+    private fun applySelectGraphicRendition(parametersString: String) {
+        val parameters = buildList {
+            parametersString
+                .split(';')
+                .mapTo(this, String::toInt)
+
+            if (isEmpty()) add(0)
+        }
+
+        val iterator = parameters.iterator()
+
+        while (iterator.hasNext()) {
+            when (val command = iterator.next()) {
+                0 -> {
+                    foreground = Color.WHITE
+                    background = null
+                }
+                // foreground color
+                in 30..37 -> foreground = standardColors.getValue(command)
+                38 -> foreground = parseColor(iterator)
+                39 -> foreground = Color.WHITE
+
+                // background color
+                in 40..47 -> background = standardColors.getValue(command - 10)
+                48 -> background = parseColor(iterator)
+                49 -> background = null
+
+                // 3-bit bright color palette
+                in 90..97 -> foreground = standardColors.getValue(command)
+                in 100..107 -> background = standardColors.getValue(command - 10)
+                else -> throw IllegalStateException("Unsupported SGR $command in $parametersString")
+            }
+        }
+    }
+
+    private fun parseColor(paramsIterator: Iterator<Int>): Color {
+        val mode = paramsIterator.next()
+
+        check(mode == 2) { "Only '2;r;g;b' color syntax is currently supported" }
+
+        val r = paramsIterator.next()
+        val g = paramsIterator.next()
+        val b = paramsIterator.next()
+
+        return Color(r, g, b)
     }
 
     private fun MutableList<Symbol>.safeSet(index: Int, symbol: Symbol) {
@@ -65,7 +167,7 @@ internal class AnsiTerminal(
         notifyListerners()
     }
 
-    private fun notifyListerners() = onFeedChanged(TerminalFeed(lines, cursorPosition))
+    private fun notifyListerners() = onFeedChanged(TerminalFeed(lines, cursorPosition.takeIf { showCursor }))
 }
 
 internal data class TerminalFeed(
