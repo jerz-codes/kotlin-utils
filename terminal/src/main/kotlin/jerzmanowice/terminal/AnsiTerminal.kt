@@ -62,7 +62,7 @@ internal class AnsiTerminal(
                     } else {
                         ansiSequence.append(char)
                         if (char in '\u0040'..'\u007e') {
-                            applyAnsiSequence(ansiSequence.toString())
+                            applyAnsiSequence(ansiSequence.toString().drop(1))
                             partialAnsiSequence = null
                         }
                     }
@@ -90,7 +90,35 @@ internal class AnsiTerminal(
 
     private fun applyAnsiSequence(ansiSequence: String) {
         when(ansiSequence.last()) {
-            'm' -> applySelectGraphicRendition(ansiSequence.drop(1).dropLast(1))
+            'm' -> applySelectGraphicRendition(ansiSequence.dropLast(1))
+            'J' -> when (ansiSequence.dropLast(1)) {
+                "", "0" -> {
+                    lines.forEachIndexed { index, symbols ->
+                        if (index > cursorPosition.y) {
+                            symbols.clear()
+                        } else if (index == cursorPosition.y) {
+                            for (x in cursorPosition.x until symbols.size) {
+                                symbols[x] = Symbol(" ", foreground)
+                            }
+                        }
+                    }
+                }
+                "1" -> {
+                    lines.forEachIndexed { index, symbols ->
+                        if (index < cursorPosition.y) {
+                            symbols.clear()
+                        } else if (index == cursorPosition.y) {
+                            repeat(cursorPosition.x) { x ->
+                                symbols[x] = Symbol(" ", foreground)
+                            }
+                        }
+                    }
+                }
+                "2", "3" -> {
+                    lines.forEach { it.clear() }
+                    cursorPosition = Point(0, 0)
+                }
+            }
             else -> when (ansiSequence) {
                 "?25h" -> showCursor = true
                 "?25l" -> showCursor = false
@@ -167,7 +195,9 @@ internal class AnsiTerminal(
         notifyListerners()
     }
 
-    private fun notifyListerners() = onFeedChanged(TerminalFeed(lines, cursorPosition.takeIf { showCursor }))
+    private fun notifyListerners() = onFeedChanged(
+        TerminalFeed(lines.map { it.toList() }, cursorPosition.takeIf { showCursor })
+    )
 }
 
 internal data class TerminalFeed(
