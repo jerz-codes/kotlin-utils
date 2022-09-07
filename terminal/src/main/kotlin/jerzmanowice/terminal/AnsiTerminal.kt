@@ -88,23 +88,35 @@ internal class AnsiTerminal(
         notifyListerners()
     }
 
+    private val ansiSequenceCache = mutableMapOf<String, () -> Unit>()
+
     private fun applyAnsiSequence(ansiSequence: String) {
+        val sequenceAction = ansiSequenceCache.getOrPut(ansiSequence) {
+            createAnsiSequenceAction(ansiSequence)
+        }
+
+        sequenceAction()
+    }
+
+    private fun createAnsiSequenceAction(ansiSequence: String): () -> Unit {
         when(ansiSequence.last()) {
-            'm' -> applySelectGraphicRendition(ansiSequence.dropLast(1))
+            'm' -> return createSelectGraphicRenditionAction(ansiSequence.dropLast(1))
             'H' -> {
                 val (row, col) = ansiSequence.dropLast(1).split(';')
                     .also { check(it.size == 2) { "Provide both coordinates for Cursor Position ANSI sequence" } }
                     .map { it.toInt() }
 
-                // position is 1-based
-                cursorPosition = Point(col - 1, row - 1)
-                while (cursorPosition.y >= lines.size) {
-                    lines.add(mutableListOf())
+                return {
+                    // position is 1-based
+                    cursorPosition = Point(col - 1, row - 1)
+                    while (cursorPosition.y >= lines.size) {
+                        lines.add(mutableListOf())
+                    }
+                    lines[cursorPosition.y].safeSet(cursorPosition.x, Symbol(" ", foreground))
                 }
-                lines[cursorPosition.y].safeSet(cursorPosition.x, Symbol(" ", foreground))
             }
             'J' -> when (ansiSequence.dropLast(1)) {
-                "", "0" -> {
+                "", "0" -> return {
                     lines.forEachIndexed { index, symbols ->
                         if (index > cursorPosition.y) {
                             symbols.clear()
@@ -115,7 +127,7 @@ internal class AnsiTerminal(
                         }
                     }
                 }
-                "1" -> {
+                "1" -> return  {
                     lines.forEachIndexed { index, symbols ->
                         if (index < cursorPosition.y) {
                             symbols.clear()
@@ -126,20 +138,21 @@ internal class AnsiTerminal(
                         }
                     }
                 }
-                "2", "3" -> {
+                "2", "3" -> return {
                     lines.forEach { it.clear() }
                     cursorPosition = Point(0, 0)
                 }
             }
             else -> when (ansiSequence) {
-                "?25h" -> showCursor = true
-                "?25l" -> showCursor = false
-                else -> throw IllegalStateException("Unsupported ANSI sequence: $ansiSequence")
+                "?25h" -> return { showCursor = true }
+                "?25l" -> return { showCursor = false }
             }
         }
+
+        return { throw IllegalStateException("Unsupported ANSI sequence: $ansiSequence") }
     }
 
-    private fun applySelectGraphicRendition(parametersString: String) {
+    private fun createSelectGraphicRenditionAction(parametersString: String): () -> Unit {
         val parameters = buildList {
             parametersString
                 .split(';')
@@ -150,28 +163,33 @@ internal class AnsiTerminal(
 
         val iterator = parameters.iterator()
 
-        while (iterator.hasNext()) {
-            when (val command = iterator.next()) {
-                0 -> {
-                    foreground = Color.WHITE
-                    background = null
-                }
-                // foreground color
-                in 30..37 -> foreground = standardColors.getValue(command)
-                38 -> foreground = parseColor(iterator)
-                39 -> foreground = Color.WHITE
-
-                // background color
-                in 40..47 -> background = standardColors.getValue(command - 10)
-                48 -> background = parseColor(iterator)
-                49 -> background = null
-
-                // 3-bit bright color palette
-                in 90..97 -> foreground = standardColors.getValue(command)
-                in 100..107 -> background = standardColors.getValue(command - 10)
-                else -> throw IllegalStateException("Unsupported SGR $command in $parametersString")
+        when (val command = iterator.next()) {
+            0 -> return {
+                foreground = Color.WHITE
+                background = null
             }
+            // foreground color
+            in 30..37 -> return { foreground = standardColors.getValue(command) }
+            38 -> {
+                val color = parseColor(iterator)
+                return { foreground = color }
+            }
+            39 -> return { foreground = Color.WHITE }
+
+            // background color
+            in 40..47 -> return { background = standardColors.getValue(command - 10) }
+            48 -> {
+                val color = parseColor(iterator)
+                return { background = color }
+            }
+            49 -> return { background = null }
+
+            // 3-bit bright color palette
+            in 90..97 -> return { foreground = standardColors.getValue(command) }
+            in 100..107 -> return { background = standardColors.getValue(command - 10) }
         }
+
+        return { throw IllegalStateException("Unsupported SGR: $parametersString") }
     }
 
     private fun parseColor(paramsIterator: Iterator<Int>): Color {
