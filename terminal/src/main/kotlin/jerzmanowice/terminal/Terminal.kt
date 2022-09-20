@@ -119,6 +119,42 @@ fun rawTerminal(
     }
 }
 
+fun interface AsyncTerminalMode {
+    fun getPressedKeys(): Set<Int>
+}
+
+fun asyncTerminal(
+    widthInTiles: Int = 80,
+    heightInTiles: Int = 24,
+    fontSize: Int = 16,
+    block: AsyncTerminalMode.() -> Unit
+) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame ->
+    val originalStdIn = System.`in`
+
+    val pressedKeys = mutableSetOf<Int>()
+
+    val keyListener = object : KeyAdapter() {
+        override fun keyPressed(e: KeyEvent) {
+            synchronized(pressedKeys) { pressedKeys.add(e.keyCode) }
+        }
+
+        override fun keyReleased(e: KeyEvent) {
+            synchronized(pressedKeys) { pressedKeys.remove(e.keyCode) }
+        }
+    }
+
+    try {
+        System.setIn(InputStream.nullInputStream().apply { close() })
+        mainFrame.addKeyListener(keyListener)
+        with(AsyncTerminalMode { synchronized(pressedKeys) { pressedKeys.toSet() } }) {
+            block()
+        }
+    } finally {
+        System.setIn(originalStdIn)
+        mainFrame.removeKeyListener(keyListener)
+    }
+}
+
 private fun terminal(
     widthInTiles: Int = 80,
     heightInTiles: Int = 24,
