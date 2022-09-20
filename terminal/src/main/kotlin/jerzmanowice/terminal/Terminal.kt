@@ -11,19 +11,31 @@ import java.awt.RenderingHints
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
 import java.awt.font.GlyphVector
+import java.util.concurrent.TimeUnit
 import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.WindowConstants.EXIT_ON_CLOSE
 
-fun interface TerminalContext {
-    fun log(message: String)
+private val stdOut = System.`out`
+private val startAt = System.nanoTime()
+fun log(message: String) {
+    val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startAt)
+    val thread = Thread.currentThread().name
+
+    message.lineSequence().forEach { line ->
+        with (stdOut) {
+            print("${elapsedMs}ms".padEnd(length = 16))
+            print(thread.padEnd(length = 32))
+            println(line)
+        }
+    }
 }
 
 fun terminal(
     widthInTiles: Int = 80,
     heightInTiles: Int = 24,
     fontSize: Int = 16,
-    block: TerminalContext.() -> Unit
+    block: () -> Unit
 ) {
     val originalStdOut = System.`out`
     val originalStdIn = System.`in`
@@ -94,7 +106,7 @@ fun terminal(
 
         try {
             mainFrame.addKeyListener(keyListener)
-            StdOutTerminalContext(originalStdOut).block()
+            block()
         } finally {
             mainFrame.removeKeyListener(keyListener)
             mainFrame.title = "[Program zakończony]"
