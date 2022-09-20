@@ -5,20 +5,20 @@ import java.util.Locale
 
 internal class TerminalPrintStream(private val onChars: (String) -> Unit) : PrintStream(nullOutputStream()) {
     override fun write(b: Int) = throw UnsupportedOperationException()
-    override fun write(buf: ByteArray?, off: Int, len: Int) = throw UnsupportedOperationException()
-    override fun write(b: ByteArray?) = throw UnsupportedOperationException()
+    override fun write(buf: ByteArray, off: Int, len: Int): Unit = throw UnsupportedOperationException()
+    override fun write(b: ByteArray): Unit = throw UnsupportedOperationException()
 
     override fun append(csq: CharSequence?): PrintStream = throw UnsupportedOperationException()
     override fun append(csq: CharSequence?, start: Int, end: Int): PrintStream = throw UnsupportedOperationException()
     override fun append(c: Char): PrintStream = throw UnsupportedOperationException()
 
-    override fun printf(format: String?, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
-    override fun printf(l: Locale?, format: String?, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
-    override fun format(format: String?, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
-    override fun format(l: Locale?, format: String?, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
+    override fun printf(format: String, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
+    override fun printf(l: Locale?, format: String, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
+    override fun format(format: String, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
+    override fun format(l: Locale?, format: String, vararg args: Any?): PrintStream = throw UnsupportedOperationException()
 
-    override fun print(s: CharArray?) = throw UnsupportedOperationException()
-    override fun println(x: CharArray?) = throw UnsupportedOperationException()
+    override fun print(s: CharArray): Unit = throw UnsupportedOperationException()
+    override fun println(x: CharArray): Unit = throw UnsupportedOperationException()
 
     override fun println() = newLine()
     override fun println(x: Boolean) = println(x.toString())
