@@ -8,9 +8,12 @@ import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
+import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
 import java.awt.font.GlyphVector
+import java.io.InputStream
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -23,7 +26,7 @@ fun log(message: String) {
     val thread = Thread.currentThread().name
 
     message.lineSequence().forEach { line ->
-        with (stdOut) {
+        with(stdOut) {
             print("${elapsedMs}ms".padEnd(length = 16))
             print(thread.padEnd(length = 32))
             println(line)
@@ -36,84 +39,123 @@ fun terminal(
     heightInTiles: Int = 24,
     fontSize: Int = 16,
     block: () -> Unit
+) = terminal(widthInTiles, heightInTiles, fontSize) { terminal, mainFrame ->
+    val originalStdIn = System.`in`
+
+    val readlnPipe = Pipe(1024)
+
+    val keyListener = object : KeyListener {
+        val readlnSink = readlnPipe.sink.buffer()
+        var input = mutableListOf<String>()
+
+        override fun keyTyped(e: KeyEvent) {
+            terminal.lockForRead {
+                when (e.extendedKeyCode) {
+                    0x1b -> Unit // escape, ignore this because it messes up with ANSI sequences handling
+                    0x0a -> {
+                        input.forEach(readlnSink::writeUtf8)
+                        readlnSink.writeUtf8("\n")
+                        readlnSink.flush()
+                        input.clear()
+
+                        terminal.onChars("\n")
+                    }
+                    0x08 -> {
+                        if (input.removeLastOrNull() != null) {
+                            terminal.onBackspace()
+                        }
+                    }
+                    0x7f -> Unit // delete, we do not support it at the moment
+                    else -> {
+                        val utfString = "${e.keyChar}"
+                        input.add(utfString)
+                        terminal.onChars(utfString)
+                    }
+                }
+            }
+        }
+
+        override fun keyPressed(e: KeyEvent) = Unit
+        override fun keyReleased(e: KeyEvent) = Unit
+    }
+
+    try {
+        System.setIn(readlnPipe.source.buffer().inputStream())
+        mainFrame.addKeyListener(keyListener)
+        block()
+    } finally {
+        System.setIn(originalStdIn)
+        mainFrame.removeKeyListener(keyListener)
+    }
+}
+
+fun interface RawTerminalMode {
+    fun getNextPressedKeyEvent(): KeyEvent
+}
+
+fun rawTerminal(
+    widthInTiles: Int = 80,
+    heightInTiles: Int = 24,
+    fontSize: Int = 16,
+    block: RawTerminalMode.() -> Unit
+) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame ->
+    val originalStdIn = System.`in`
+
+    val keyQueue = LinkedBlockingQueue<KeyEvent>()
+
+    val keyListener = object : KeyAdapter() {
+        override fun keyPressed(e: KeyEvent) = keyQueue.put(e)
+    }
+
+    try {
+        System.setIn(InputStream.nullInputStream().apply { close() })
+        mainFrame.addKeyListener(keyListener)
+        with(RawTerminalMode(keyQueue::take)) {
+            block()
+        }
+    } finally {
+        System.setIn(originalStdIn)
+        mainFrame.removeKeyListener(keyListener)
+    }
+}
+
+private fun terminal(
+    widthInTiles: Int = 80,
+    heightInTiles: Int = 24,
+    fontSize: Int = 16,
+    handle: (terminal: AnsiTerminal, mainFrame: JFrame) -> Unit
 ) {
     val originalStdOut = System.`out`
-    val originalStdIn = System.`in`
 
     // On some JDKs the font antialiasing is broken without this
     System.setProperty("awt.useSystemAAFontSettings", "on")
     System.setProperty("swing.aatext", "true")
 
+    val terminalPane = TerminalPane(widthInTiles, heightInTiles, fontSize)
+
+    val mainFrame = JFrame("Terminal")
+        .apply {
+            defaultCloseOperation = EXIT_ON_CLOSE
+
+            contentPane = terminalPane
+            isResizable = false
+
+            pack()
+            isVisible = true
+
+            requestFocusInWindow()
+        }
+
+    val terminal = AnsiTerminal(linesCount = heightInTiles) { feed ->
+        terminalPane.screen = feed
+    }
+
     try {
-        val terminalPane = TerminalPane(widthInTiles, heightInTiles, fontSize)
-
-        val mainFrame = JFrame("Terminal")
-            .apply {
-                defaultCloseOperation = EXIT_ON_CLOSE
-
-                contentPane = terminalPane
-                isResizable = false
-
-                pack()
-                isVisible = true
-
-                requestFocusInWindow()
-            }
-
-        val terminal = AnsiTerminal(linesCount = heightInTiles) { feed ->
-            terminalPane.screen = feed
-        }
-
-        val readlnPipe = Pipe(1024)
-
-        val keyListener = object : KeyListener {
-            val readlnSink = readlnPipe.sink.buffer()
-            var input = mutableListOf<String>()
-
-            override fun keyTyped(e: KeyEvent) {
-                terminal.lockForRead {
-                    when (e.extendedKeyCode) {
-                        0x1b -> Unit // escape, ignore this because it messes up with ANSI sequences handling
-                        0x0a -> {
-                            input.forEach(readlnSink::writeUtf8)
-                            readlnSink.writeUtf8("\n")
-                            readlnSink.flush()
-                            input.clear()
-
-                            terminal.onChars("\n")
-                        }
-                        0x08 -> {
-                            if (input.removeLastOrNull() != null) {
-                                terminal.onBackspace()
-                            }
-                        }
-                        0x7f -> Unit // delete, we do not support it at the moment
-                        else -> {
-                            val utfString = "${e.keyChar}"
-                            input.add(utfString)
-                            terminal.onChars(utfString)
-                        }
-                    }
-                }
-            }
-
-            override fun keyPressed(e: KeyEvent) = Unit
-            override fun keyReleased(e: KeyEvent) = Unit
-        }
-
-        System.setIn(readlnPipe.source.buffer().inputStream())
         System.setOut(TerminalPrintStream(terminal::onChars))
-
-        try {
-            mainFrame.addKeyListener(keyListener)
-            block()
-        } finally {
-            mainFrame.removeKeyListener(keyListener)
-            mainFrame.title = "[Program zakończony]"
-        }
+        handle(terminal, mainFrame)
     } finally {
         System.setOut(originalStdOut)
-        System.setIn(originalStdIn)
+        mainFrame.title = "[Program zakończony]"
     }
 }
 
