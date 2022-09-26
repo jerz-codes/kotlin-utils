@@ -12,7 +12,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.squareup.okio:okio:3.1.0")
+    implementation("net.java.dev.jna:jna-platform:5.12.1")
 }
 
 tasks.withType<KotlinCompile> {

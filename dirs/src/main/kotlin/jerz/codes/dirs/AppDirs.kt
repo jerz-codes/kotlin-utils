@@ -9,7 +9,7 @@ import java.nio.file.Paths
 
 class AppDirs(
     private val appName: String,
-    private val appAuthor: String = "jerzmanowice-kotlin",
+    private val appAuthor: String = "jerz.codes",
     private val appVersion: String = "0.0.1"
 ) {
     private val homeDir: String = System.getProperty("user.home")
