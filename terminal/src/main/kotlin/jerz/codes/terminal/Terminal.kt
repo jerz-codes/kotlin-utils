@@ -1,4 +1,4 @@
-package jerzmanowice.terminal
+package jerz.codes.terminal
 
 import okio.Pipe
 import okio.buffer

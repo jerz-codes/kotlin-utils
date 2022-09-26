@@ -1,4 +1,4 @@
-package jerzmanowice.terminal
+package jerz.codes.terminal
 
 import java.io.PrintStream
 import java.util.Locale
