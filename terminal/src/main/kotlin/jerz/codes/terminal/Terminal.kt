@@ -37,7 +37,7 @@ fun log(message: String) {
 fun terminal(
     widthInTiles: Int = 80,
     heightInTiles: Int = 24,
-    fontSize: Int = 16,
+    fontSize: Int = 24,
     block: () -> Unit
 ) = terminal(widthInTiles, heightInTiles, fontSize) { terminal, mainFrame ->
     val originalStdIn = System.`in`
