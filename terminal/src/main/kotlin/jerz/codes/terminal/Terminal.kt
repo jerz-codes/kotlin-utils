@@ -50,7 +50,7 @@ fun terminal(
 
         override fun keyTyped(e: KeyEvent) {
             terminal.lockForRead {
-                when (e.extendedKeyCode) {
+                when (e.keyChar.code) {
                     0x1b -> Unit // escape, ignore this because it messes up with ANSI sequences handling
                     0x0a -> {
                         input.forEach(readlnSink::writeUtf8)
