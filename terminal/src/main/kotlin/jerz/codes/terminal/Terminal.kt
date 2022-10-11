@@ -19,6 +19,10 @@ import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.WindowConstants.EXIT_ON_CLOSE
 
+private const val DEFAULT_TERMINAL_WIDTH = 80
+private const val DEFAULT_TERMINAL_HEIGHT = 24
+private const val DEFAULT_TERMINAL_FONT_SIZE = 24
+
 private val stdOut = System.`out`
 private val startAt = System.nanoTime()
 fun log(message: String) {
@@ -35,9 +39,9 @@ fun log(message: String) {
 }
 
 fun terminal(
-    widthInTiles: Int = 80,
-    heightInTiles: Int = 24,
-    fontSize: Int = 24,
+    widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
+    heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
+    fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     block: () -> Unit
 ) = terminal(widthInTiles, heightInTiles, fontSize) { terminal, mainFrame ->
     val originalStdIn = System.`in`
@@ -94,9 +98,9 @@ fun interface RawTerminalMode {
 }
 
 fun rawTerminal(
-    widthInTiles: Int = 80,
-    heightInTiles: Int = 24,
-    fontSize: Int = 16,
+    widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
+    heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
+    fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     block: RawTerminalMode.() -> Unit
 ) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame ->
     val originalStdIn = System.`in`
@@ -124,9 +128,9 @@ fun interface AsyncTerminalMode {
 }
 
 fun asyncTerminal(
-    widthInTiles: Int = 80,
-    heightInTiles: Int = 24,
-    fontSize: Int = 16,
+    widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
+    heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
+    fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     block: AsyncTerminalMode.() -> Unit
 ) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame ->
     val originalStdIn = System.`in`
@@ -156,9 +160,9 @@ fun asyncTerminal(
 }
 
 private fun terminal(
-    widthInTiles: Int = 80,
-    heightInTiles: Int = 24,
-    fontSize: Int = 16,
+    widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
+    heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
+    fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     handle: (terminal: AnsiTerminal, mainFrame: JFrame) -> Unit
 ) {
     val originalStdOut = System.`out`
