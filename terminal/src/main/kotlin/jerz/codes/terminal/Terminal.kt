@@ -11,6 +11,8 @@ import java.awt.RenderingHints
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.awt.font.GlyphVector
 import java.io.InputStream
 import java.util.concurrent.LinkedBlockingQueue
@@ -43,7 +45,7 @@ fun terminal(
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     block: () -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize) { terminal, mainFrame ->
+) = terminal(widthInTiles, heightInTiles, fontSize) { terminal, mainFrame, _ ->
     val originalStdIn = System.`in`
 
     val readlnPipe = Pipe(1024)
@@ -94,7 +96,15 @@ fun terminal(
 }
 
 fun interface RawTerminalMode {
-    fun getNextPressedKeyEvent(): KeyEvent
+    fun getNextEvent(): RawTerminalEvent
+}
+
+data class TileCoords(val x: Int, val y: Int)
+
+sealed class RawTerminalEvent {
+    data class KeyPressed(val keyEvent: KeyEvent) : RawTerminalEvent()
+    data class MouseMoved(val tile: TileCoords?) : RawTerminalEvent()
+    data class MouseClicked(val tile: TileCoords, val mouseEvent: MouseEvent) : RawTerminalEvent()
 }
 
 fun rawTerminal(
@@ -102,24 +112,57 @@ fun rawTerminal(
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     block: RawTerminalMode.() -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame ->
+) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame, terminalPane ->
     val originalStdIn = System.`in`
 
-    val keyQueue = LinkedBlockingQueue<KeyEvent>()
+    val keyQueue = LinkedBlockingQueue<RawTerminalEvent>()
 
     val keyListener = object : KeyAdapter() {
-        override fun keyPressed(e: KeyEvent) = keyQueue.put(e)
+        override fun keyPressed(e: KeyEvent) = keyQueue.put(RawTerminalEvent.KeyPressed(e))
+    }
+
+    val mouseListener = object : MouseAdapter() {
+        override fun mouseClicked(e: MouseEvent) {
+            val clickCoords = terminalPane.mapCoords(e.x, e.y)
+            if (clickCoords != null) {
+                keyQueue.put(RawTerminalEvent.MouseClicked(clickCoords, e))
+            }
+        }
+
+        override fun mouseMoved(e: MouseEvent) {
+            val moveCoords = terminalPane.mapCoords(e.x, e.y)
+            if (moveCoords != null) {
+                keyQueue.put(RawTerminalEvent.MouseMoved(moveCoords))
+            }
+        }
+
+        override fun mouseEntered(e: MouseEvent) {
+            val moveCoords = terminalPane.mapCoords(e.x, e.y)
+            if (moveCoords != null) {
+                keyQueue.put(RawTerminalEvent.MouseMoved(moveCoords))
+            }
+        }
+
+        override fun mouseExited(e: MouseEvent) {
+            keyQueue.put(RawTerminalEvent.MouseMoved(null))
+        }
     }
 
     try {
         System.setIn(InputStream.nullInputStream().apply { close() })
         mainFrame.addKeyListener(keyListener)
+        terminalPane.addMouseListener(mouseListener)
+        terminalPane.addMouseMotionListener(mouseListener)
+        terminalPane.addMouseWheelListener(mouseListener)
         with(RawTerminalMode(keyQueue::take)) {
             block()
         }
     } finally {
         System.setIn(originalStdIn)
         mainFrame.removeKeyListener(keyListener)
+        terminalPane.removeMouseListener(mouseListener)
+        terminalPane.removeMouseMotionListener(mouseListener)
+        terminalPane.removeMouseWheelListener(mouseListener)
     }
 }
 
@@ -132,7 +175,7 @@ fun asyncTerminal(
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     block: AsyncTerminalMode.() -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame ->
+) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame, _ ->
     val originalStdIn = System.`in`
 
     val pressedKeys = mutableSetOf<Int>()
@@ -163,7 +206,7 @@ private fun terminal(
     widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
-    handle: (terminal: AnsiTerminal, mainFrame: JFrame) -> Unit
+    handle: (terminal: AnsiTerminal, mainFrame: JFrame, terminalPane: TerminalPane) -> Unit
 ) {
     val originalStdOut = System.`out`
 
@@ -192,7 +235,7 @@ private fun terminal(
 
     try {
         System.setOut(TerminalPrintStream(terminal::onChars))
-        handle(terminal, mainFrame)
+        handle(terminal, mainFrame, terminalPane)
         mainFrame.title = "[Program zakończony]"
     } catch (e: Throwable) {
         mainFrame.title = "☠️ CRASH!!! ☠️"
@@ -203,7 +246,7 @@ private fun terminal(
 }
 
 private class TerminalPane(
-    widthInTiles: Int,
+    val widthInTiles: Int,
     val heightInTiles: Int,
     fontSize: Int,
 ) : JPanel() {
@@ -235,6 +278,13 @@ private class TerminalPane(
             widthInTiles * tileWidth + padding * 2,
             heightInTiles * tileHeight + padding * 2
         )
+    }
+
+    fun mapCoords(x: Int, y: Int): TileCoords? {
+        val tileX = ((x - padding) / tileWidth).takeIf { it in 0 until widthInTiles } ?: return null
+        val tileY = ((y - padding) / tileHeight).takeIf { it in 0 until heightInTiles } ?: return null
+
+        return TileCoords(tileX, tileY)
     }
 
     val glyphsCache = mutableMapOf<String, Pair<GlyphVector, Boolean>>()
