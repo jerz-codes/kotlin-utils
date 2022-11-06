@@ -193,9 +193,12 @@ private fun terminal(
     try {
         System.setOut(TerminalPrintStream(terminal::onChars))
         handle(terminal, mainFrame)
+        mainFrame.title = "[Program zakończony]"
+    } catch (e: Throwable) {
+        mainFrame.title = "☠️ CRASH!!! ☠️"
+        throw e
     } finally {
         System.setOut(originalStdOut)
-        mainFrame.title = "[Program zakończony]"
     }
 }
 
