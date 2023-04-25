@@ -99,6 +99,12 @@ fun interface RawTerminalMode {
     fun getNextEvent(): RawTerminalEvent
 }
 
+tailrec fun RawTerminalMode.getNextKeyEvent(): KeyEvent = when (val e = getNextEvent()) {
+    is RawTerminalEvent.KeyPressed -> e.keyEvent
+    is RawTerminalEvent.MouseClicked,
+    is RawTerminalEvent.MouseMoved -> getNextKeyEvent()
+}
+
 data class TileCoords(val x: Int, val y: Int)
 
 sealed class RawTerminalEvent {
