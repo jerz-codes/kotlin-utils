@@ -128,6 +128,8 @@ fun rawTerminal(
     }
 
     val mouseListener = object : MouseAdapter() {
+        private var mousePosition: TileCoords? = null
+
         override fun mouseClicked(e: MouseEvent) {
             val clickCoords = terminalPane.mapCoords(e.x, e.y)
             if (clickCoords != null) {
@@ -137,19 +139,22 @@ fun rawTerminal(
 
         override fun mouseMoved(e: MouseEvent) {
             val moveCoords = terminalPane.mapCoords(e.x, e.y)
-            if (moveCoords != null) {
+            if (moveCoords != null && moveCoords != mousePosition) {
+                mousePosition = moveCoords
                 keyQueue.put(RawTerminalEvent.MouseMoved(moveCoords))
             }
         }
 
         override fun mouseEntered(e: MouseEvent) {
             val moveCoords = terminalPane.mapCoords(e.x, e.y)
-            if (moveCoords != null) {
+            if (moveCoords != null && moveCoords != mousePosition) {
+                mousePosition = moveCoords
                 keyQueue.put(RawTerminalEvent.MouseMoved(moveCoords))
             }
         }
 
         override fun mouseExited(e: MouseEvent) {
+            mousePosition = null
             keyQueue.put(RawTerminalEvent.MouseMoved(null))
         }
     }
