@@ -287,8 +287,8 @@ private class TerminalPane(
     }
 
     fun mapCoords(x: Int, y: Int): TileCoords? {
-        val tileX = ((x - padding) / tileWidth).takeIf { it in 0 until widthInTiles } ?: return null
-        val tileY = ((y - padding) / tileHeight).takeIf { it in 0 until heightInTiles } ?: return null
+        val tileX = ((x - padding) / tileWidth + 1).takeIf { it in 1..widthInTiles } ?: return null
+        val tileY = ((y - padding) / tileHeight + 1).takeIf { it in 1..heightInTiles } ?: return null
 
         return TileCoords(tileX, tileY)
     }
