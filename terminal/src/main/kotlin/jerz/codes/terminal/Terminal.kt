@@ -179,8 +179,14 @@ fun rawTerminal(
     }
 }
 
-fun interface AsyncTerminalMode {
+data class MouseState(
+    val coords: TileCoords,
+    val pressedButtons: Set<Int>,
+)
+
+interface AsyncTerminalMode {
     fun getPressedKeys(): Set<Int>
+    fun getMouseState(): MouseState?
 }
 
 fun asyncTerminal(
@@ -189,12 +195,16 @@ fun asyncTerminal(
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
     squareTiles: Boolean = false,
     block: AsyncTerminalMode.() -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize, squareTiles) { _, mainFrame, _ ->
+) = terminal(widthInTiles, heightInTiles, fontSize, squareTiles) { _, mainFrame, terminalPane ->
     val originalStdIn = System.`in`
 
-    val pressedKeys = mutableSetOf<Int>()
-
     val keyListener = object : KeyAdapter() {
+        private val pressedKeys = mutableSetOf<Int>()
+
+        fun getPressedKeys(): Set<Int> {
+            return synchronized(pressedKeys) { pressedKeys }
+        }
+
         override fun keyPressed(e: KeyEvent) {
             synchronized(pressedKeys) { pressedKeys.add(e.keyCode) }
         }
@@ -204,15 +214,66 @@ fun asyncTerminal(
         }
     }
 
+    val mouseListener = object : MouseAdapter() {
+        private var mousePosition: TileCoords? = null
+        private val mouseButtons = mutableSetOf<Int>()
+
+        fun getMouseState(): MouseState? = mousePosition?.let { MouseState(it, mouseButtons) }
+
+        override fun mousePressed(e: MouseEvent) {
+            synchronized(this) { mouseButtons.add(e.button) }
+        }
+
+        override fun mouseReleased(e: MouseEvent) {
+            synchronized(this) { mouseButtons.remove(e.button) }
+        }
+
+        override fun mouseMoved(e: MouseEvent) {
+            val moveCoords = terminalPane.mapCoords(e.x, e.y)
+            if (moveCoords != mousePosition) {
+                synchronized(this) { mousePosition = moveCoords }
+            }
+        }
+
+        override fun mouseDragged(e: MouseEvent) {
+            val moveCoords = terminalPane.mapCoords(e.x, e.y)
+            if (moveCoords != mousePosition) {
+                synchronized(this) { mousePosition = moveCoords }
+            }
+        }
+
+        override fun mouseEntered(e: MouseEvent) {
+            val moveCoords = terminalPane.mapCoords(e.x, e.y)
+            if (moveCoords != null && moveCoords != mousePosition) {
+                synchronized(this) { mousePosition = moveCoords }
+            }
+        }
+
+        override fun mouseExited(e: MouseEvent) {
+            synchronized(this) { mousePosition = null }
+        }
+    }
+
     try {
         System.setIn(InputStream.nullInputStream().apply { close() })
         mainFrame.addKeyListener(keyListener)
-        with(AsyncTerminalMode { synchronized(pressedKeys) { pressedKeys.toSet() } }) {
-            block()
-        }
+        terminalPane.addMouseListener(mouseListener)
+        terminalPane.addMouseWheelListener(mouseListener)
+        terminalPane.addMouseMotionListener(mouseListener)
+
+        with(
+            object : AsyncTerminalMode {
+                override fun getPressedKeys(): Set<Int> = keyListener.getPressedKeys()
+                override fun getMouseState(): MouseState? = mouseListener.getMouseState()
+            },
+            block
+        )
     } finally {
         System.setIn(originalStdIn)
         mainFrame.removeKeyListener(keyListener)
+        terminalPane.removeMouseListener(mouseListener)
+        terminalPane.removeMouseWheelListener(mouseListener)
+        terminalPane.removeMouseMotionListener(mouseListener)
     }
 }
 
