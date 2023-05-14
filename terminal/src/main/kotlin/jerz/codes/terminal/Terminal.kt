@@ -44,8 +44,9 @@ fun terminal(
     widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
+    squareTiles: Boolean = false,
     block: () -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize) { terminal, mainFrame, _ ->
+) = terminal(widthInTiles, heightInTiles, fontSize, squareTiles) { terminal, mainFrame, _ ->
     val originalStdIn = System.`in`
 
     val readlnPipe = Pipe(1024)
@@ -117,8 +118,9 @@ fun rawTerminal(
     widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
+    squareTiles: Boolean = false,
     block: RawTerminalMode.() -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame, terminalPane ->
+) = terminal(widthInTiles, heightInTiles, fontSize, squareTiles) { _, mainFrame, terminalPane ->
     val originalStdIn = System.`in`
 
     val keyQueue = LinkedBlockingQueue<RawTerminalEvent>()
@@ -185,8 +187,9 @@ fun asyncTerminal(
     widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
+    squareTiles: Boolean = false,
     block: AsyncTerminalMode.() -> Unit
-) = terminal(widthInTiles, heightInTiles, fontSize) { _, mainFrame, _ ->
+) = terminal(widthInTiles, heightInTiles, fontSize, squareTiles) { _, mainFrame, _ ->
     val originalStdIn = System.`in`
 
     val pressedKeys = mutableSetOf<Int>()
@@ -217,6 +220,7 @@ private fun terminal(
     widthInTiles: Int = DEFAULT_TERMINAL_WIDTH,
     heightInTiles: Int = DEFAULT_TERMINAL_HEIGHT,
     fontSize: Int = DEFAULT_TERMINAL_FONT_SIZE,
+    squareTiles: Boolean = false,
     handle: (terminal: AnsiTerminal, mainFrame: JFrame, terminalPane: TerminalPane) -> Unit
 ) {
     val originalStdOut = System.`out`
@@ -225,7 +229,7 @@ private fun terminal(
     System.setProperty("awt.useSystemAAFontSettings", "on")
     System.setProperty("swing.aatext", "true")
 
-    val terminalPane = TerminalPane(widthInTiles, heightInTiles, fontSize)
+    val terminalPane = TerminalPane(widthInTiles, heightInTiles, fontSize, squareTiles)
 
     val mainFrame = JFrame("Terminal")
         .apply {
@@ -260,6 +264,7 @@ private class TerminalPane(
     val widthInTiles: Int,
     val heightInTiles: Int,
     fontSize: Int,
+    val squareTiles: Boolean,
 ) : JPanel() {
 
     val standardTileFont: Font = Font
@@ -273,13 +278,15 @@ private class TerminalPane(
 
     val tileWidth: Int
     val tileHeight: Int
+    val textWidth: Int
     val baselineOffset: Int
     val padding: Int
 
     init {
         getFontMetrics(standardTileFont).run {
-            tileWidth = charWidth(' ')
             tileHeight = ascent + descent
+            textWidth = charWidth(' ')
+            tileWidth = if (squareTiles) tileHeight else textWidth
             baselineOffset = ascent
 
             padding = tileWidth / 5
@@ -334,7 +341,11 @@ private class TerminalPane(
                     else -> symbol.background
                 }
 
-                val symbolWidth = if (isEmoji) 2 * tileWidth else tileWidth
+                val symbolWidth = when {
+                    squareTiles -> tileWidth
+                    isEmoji -> 2 * tileWidth
+                    else -> tileWidth
+                }
 
                 if (background != null) {
                     g.color = background
@@ -346,11 +357,14 @@ private class TerminalPane(
                     )
                 }
 
+                val xOffset = if (isEmoji) 0f else (tileWidth - textWidth) / 2f
+                val yOffset = if (isEmoji) tileHeight * (-0.05f) else 0f
+
                 g.color = symbol.foreground
                 g.drawGlyphVector(
                     glyph,
-                    x.toFloat(),
-                    (y * tileHeight + baselineOffset + padding).toFloat()
+                    x + xOffset,
+                    y * tileHeight + baselineOffset + yOffset + padding
                 )
 
                 x += symbolWidth
