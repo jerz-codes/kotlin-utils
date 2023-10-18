@@ -1,20 +1,7 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 plugins {
-    kotlin("jvm") version "1.7.10"
-}
-
-group = "jerz.codes"
-version = "0.1-SNAPSHOT"
-
-repositories {
-    mavenCentral()
+    kotlin("jvm") version "1.9.10"
 }
 
 dependencies {
-    implementation("com.squareup.okio:okio:3.1.0")
-}
-
-tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
+    implementation("com.squareup.okio:okio:3.6.0")
 }
